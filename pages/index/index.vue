@@ -1,12 +1,12 @@
 <template>
 	<view class="page">
-		<!-- 头部标题 -->
+		<!-- 头部 -->
 		<view class="header">
 			<text class="header-title">体重记录</text>
 			<text class="header-sub">{{ totalCount }} 条记录</text>
 		</view>
 
-		<!-- 日历区域 -->
+		<!-- 日历 -->
 		<view class="calendar-section">
 			<view class="month-nav">
 				<text class="month-year">{{ currentYear }}年{{ currentMonth + 1 }}月</text>
@@ -27,15 +27,20 @@
 					:class="['day-cell', cell.classes]"
 					@click="cell.day && selectDate(cell.dateStr)"
 				>
-					<!-- 日期数字 -->
 					<text class="day-num">{{ cell.day }}</text>
-					<!-- 体重数字（有记录才显示） -->
-					<text v-if="cell.hasRecord" class="day-weight">{{ cell.weight }}</text>
+					<view v-if="cell.hasRecord" class="day-weight-row">
+						<text class="day-weight">{{ cell.weight }}</text>
+						<text
+							v-if="cell.trend"
+							class="day-trend"
+							:class="'trend-' + cell.trend"
+						>{{ cell.trend === 'up' ? '↑' : cell.trend === 'down' ? '↓' : '→' }}</text>
+					</view>
 				</view>
 			</view>
 		</view>
 
-		<!-- 体重记录卡片 -->
+		<!-- 记录卡片 -->
 		<view class="record-card">
 			<text class="selected-date">{{ selectedDateLabel }}</text>
 
@@ -43,42 +48,33 @@
 				<template v-if="currentWeight !== null">
 					<text class="weight-value">{{ currentWeight.toFixed(1) }}</text>
 					<text class="weight-unit">斤</text>
+					<text
+						v-if="currentTrend"
+						class="card-trend"
+						:class="'trend-' + currentTrend"
+					>{{ currentTrend === 'up' ? '↑' : currentTrend === 'down' ? '↓' : '→' }}</text>
 				</template>
 				<text v-else class="weight-empty">暂无记录</text>
 			</view>
 
-			<view class="input-area">
+			<!-- 只有「今天 + 今天还没记录」才显示输入框 -->
+			<view v-if="canEdit" class="input-area">
 				<input
 					class="weight-input"
 					type="digit"
 					v-model="inputValue"
-					placeholder="输入体重 (斤)"
+					placeholder="输入体重（斤/公斤均可）"
 					placeholder-class="input-placeholder"
 				/>
 				<view class="save-btn" :class="{ disabled: !inputValue }" @click="saveWeight">保存</view>
 			</view>
-			<text class="hint-text">点击日期切换，输入体重保存（单位：斤）</text>
-		</view>
-
-		<!-- 最近记录 -->
-		<view class="recent-section">
-			<view class="section-title">
-				<text>最近记录</text>
-				<text class="clear-all" @click="clearAll">清除全部</text>
+			<view v-else class="locked-hint">
+				<text v-if="isToday && currentWeight !== null">今日记录已完成，不可更改</text>
+				<text v-else-if="!isToday && currentWeight !== null">历史记录，不可修改</text>
+				<text v-else-if="!isToday && currentWeight === null">暂无记录，仅可查看</text>
+				<text v-else>请选择今天来记录体重</text>
 			</view>
-			<view class="record-list">
-				<view v-if="recentRecords.length === 0" class="empty-records">
-					还没有记录，快去添加吧
-				</view>
-				<view
-					v-for="(item, idx) in recentRecords"
-					:key="idx"
-					class="record-item"
-				>
-					<text class="record-date">{{ item.displayDate }}</text>
-					<text class="record-weight">{{ item.weight.toFixed(1) }} 斤</text>
-				</view>
-			</view>
+			<text v-if="canEdit" class="hint-text">自动识别斤/公斤，存为斤</text>
 		</view>
 
 		<view class="footer-spacer"></view>
@@ -89,13 +85,14 @@
 export default {
 	data() {
 		return {
-			records: {},              // { 'YYYY-MM-DD': weight(斤) }
+			// 格式：{ 'YYYY-MM-DD': { weight: 斤数, trend: 'up'|'down'|'same'|null } }
+			records: {},
 			currentYear: new Date().getFullYear(),
 			currentMonth: new Date().getMonth(),
 			selectedDateStr: '',
 			inputValue: '',
 			weekdays: ['一', '二', '三', '四', '五', '六', '日'],
-			storageKey: 'weight_records_uniapp_jin'  // 换个key，避免和之前kg数据混
+			storageKey: 'weight_records_v2'
 		}
 	},
 	computed: {
@@ -107,26 +104,33 @@ export default {
 			const todayStr = this.formatDate(new Date())
 
 			for (let i = 0; i < leadingEmpty; i++) {
-				cells.push({ day: '', classes: 'empty', dateStr: '' })
+				cells.push({ day: '', classes: 'empty', dateStr: '', hasRecord: false, weight: '', trend: null })
 			}
 			for (let d = 1; d <= daysInMonth; d++) {
 				const dateStr = `${this.currentYear}-${String(this.currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 				let classes = ''
 				if (dateStr === this.selectedDateStr) classes += ' selected'
 				if (dateStr === todayStr && dateStr !== this.selectedDateStr) classes += ' today'
-				const weight = this.records[dateStr]
+
+				const record = this.records[dateStr]
 				cells.push({
 					day: d,
 					dateStr,
-					hasRecord: weight !== undefined,
-					weight: weight !== undefined ? weight.toFixed(1) : '',
+					hasRecord: record !== undefined,
+					weight: record !== undefined ? record.weight.toFixed(1) : '',
+					trend: record !== undefined ? record.trend : null,
 					classes
 				})
 			}
 			return cells
 		},
 		currentWeight() {
-			return this.records[this.selectedDateStr] !== undefined ? this.records[this.selectedDateStr] : null
+			const r = this.records[this.selectedDateStr]
+			return r !== undefined ? r.weight : null
+		},
+		currentTrend() {
+			const r = this.records[this.selectedDateStr]
+			return r !== undefined ? r.trend : null
 		},
 		selectedDateLabel() {
 			if (!this.selectedDateStr) return ''
@@ -138,18 +142,11 @@ export default {
 		totalCount() {
 			return Object.keys(this.records).length
 		},
-		recentRecords() {
-			const entries = Object.entries(this.records).map(([date, weight]) => ({ date, weight }))
-			entries.sort((a, b) => b.date.localeCompare(a.date))
-			return entries.slice(0, 7).map(item => {
-				const [y, m, d] = item.date.split('-').map(Number)
-				const dateObj = new Date(y, m - 1, d)
-				const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-				return {
-					displayDate: `${m}月${d}日 ${weekdays[dateObj.getDay()]}`,
-					weight: item.weight
-				}
-			})
+		isToday() {
+			return this.selectedDateStr === this.formatDate(new Date())
+		},
+		canEdit() {
+			return this.isToday && this.currentWeight === null
 		}
 	},
 	onLoad() {
@@ -160,8 +157,8 @@ export default {
 			console.error('读取存储失败', e)
 		}
 		this.selectedDateStr = this.formatDate(new Date())
-		const w = this.records[this.selectedDateStr]
-		if (w !== undefined) this.inputValue = String(w)
+		const r = this.records[this.selectedDateStr]
+		if (r !== undefined) this.inputValue = String(r.weight)
 	},
 	methods: {
 		formatDate(date) {
@@ -172,8 +169,8 @@ export default {
 		},
 		selectDate(dateStr) {
 			this.selectedDateStr = dateStr
-			const w = this.records[dateStr]
-			this.inputValue = w !== undefined ? String(w) : ''
+			const r = this.records[dateStr]
+			this.inputValue = r !== undefined ? String(r.weight) : ''
 		},
 		prevMonth() {
 			this.currentMonth--
@@ -189,43 +186,127 @@ export default {
 				this.currentYear++
 			}
 		},
-		saveWeight() {
+
+		// ========== 单位识别 ==========
+		// 返回 'jin' | 'kg' | 'unknown'
+		detectUnit(inputWeight, lastWeight) {
+			const MIN_JIN = 60
+			const MAX_JIN = 500
+
+			const asJin = inputWeight
+			const asKg = inputWeight * 2
+
+			const jinValid = asJin >= MIN_JIN && asJin <= MAX_JIN
+			const kgValid = asKg >= MIN_JIN && asKg <= MAX_JIN
+
+			// 有上次记录：优先按「哪个更接近上次」判断
+			if (lastWeight !== null) {
+				const diffJin = Math.abs(asJin - lastWeight)
+				const diffKg = Math.abs(asKg - lastWeight)
+
+				if (Math.abs(diffJin - diffKg) > 10) {
+					return diffJin < diffKg ? 'jin' : 'kg'
+				}
+				if (jinValid && !kgValid) return 'jin'
+				if (kgValid && !jinValid) return 'kg'
+				return 'unknown'
+			}
+
+			// 无上次记录：只看合理范围
+			if (jinValid && !kgValid) return 'jin'
+			if (kgValid && !jinValid) return 'kg'
+			return 'unknown'
+		},
+
+		confirmUnit(inputWeight) {
+			return new Promise((resolve) => {
+				uni.showModal({
+					title: '确认单位',
+					content: `你输入的是 ${inputWeight}，是斤还是公斤？`,
+					confirmText: '公斤',
+					cancelText: '斤',
+					success: (res) => {
+						resolve(res.confirm ? 'kg' : 'jin')
+					},
+					fail: () => resolve('cancel')
+				})
+			})
+		},
+
+		// ========== 保存 ==========
+		async saveWeight() {
+			if (!this.isToday) {
+				uni.showToast({ title: '只能记录今天的体重', icon: 'none' })
+				return
+			}
+			if (this.records[this.selectedDateStr] !== undefined) {
+				uni.showToast({ title: '今日已记录，不可更改', icon: 'none' })
+				return
+			}
 			const val = this.inputValue.trim()
 			if (!val) {
 				uni.showToast({ title: '请输入体重', icon: 'none' })
 				return
 			}
-			const weight = parseFloat(val)
-			// 斤的范围可以大一些，比如 40 ~ 1000 斤
-			if (isNaN(weight) || weight <= 0 || weight > 1000) {
-				uni.showToast({ title: '请输入有效体重', icon: 'none' })
+			const inputWeight = parseFloat(val)
+			if (isNaN(inputWeight) || inputWeight <= 0 || inputWeight > 1000) {
+				uni.showToast({ title: '请输入有效数字', icon: 'none' })
 				return
 			}
-			const rounded = Math.round(weight * 10) / 10
+
+			// 拿上次体重
+			const existingDates = Object.keys(this.records).sort()
+			const lastWeight = existingDates.length > 0
+				? this.records[existingDates[existingDates.length - 1]].weight
+				: null
+
+			// 自动识别单位
+			const unit = this.detectUnit(inputWeight, lastWeight)
+			let finalWeight
+			let convertedMsg = ''
+
+			if (unit === 'kg') {
+				finalWeight = Math.round(inputWeight * 2 * 10) / 10
+				convertedMsg = `已按公斤换算：${inputWeight}kg = ${finalWeight}斤`
+			} else if (unit === 'jin') {
+				finalWeight = Math.round(inputWeight * 10) / 10
+			} else {
+				// 模糊，弹窗确认
+				const confirmed = await this.confirmUnit(inputWeight)
+				if (confirmed === 'cancel') return
+				if (confirmed === 'kg') {
+					finalWeight = Math.round(inputWeight * 2 * 10) / 10
+					convertedMsg = `已按公斤换算：${inputWeight}kg = ${finalWeight}斤`
+				} else {
+					finalWeight = Math.round(inputWeight * 10) / 10
+				}
+			}
+
+			// 算趋势
+			let trend = null
+			if (lastWeight !== null) {
+				const diff = Math.round((finalWeight - lastWeight) * 10) / 10
+				if (diff > 0) trend = 'up'
+				else if (diff < 0) trend = 'down'
+				else trend = 'same'
+			}
+
+			// 存
 			this.records = {
 				...this.records,
-				[this.selectedDateStr]: rounded
+				[this.selectedDateStr]: {
+					weight: finalWeight,
+					trend: trend
+				}
 			}
 			uni.setStorageSync(this.storageKey, JSON.stringify(this.records))
-			uni.showToast({ title: '已保存', icon: 'success' })
-		},
-		clearAll() {
-			if (Object.keys(this.records).length === 0) {
-				uni.showToast({ title: '暂无记录', icon: 'none' })
-				return
+
+			// 提示
+			if (convertedMsg) {
+				uni.showToast({ title: convertedMsg, icon: 'none', duration: 2500 })
+			} else {
+				uni.showToast({ title: '已保存', icon: 'success' })
 			}
-			uni.showModal({
-				title: '确认清除',
-				content: '确定要清除所有体重记录吗？此操作不可恢复。',
-				success: (res) => {
-					if (res.confirm) {
-						this.records = {}
-						uni.removeStorageSync(this.storageKey)
-						this.inputValue = ''
-						uni.showToast({ title: '已清除', icon: 'success' })
-					}
-				}
-			})
 		}
 	}
 }
@@ -310,8 +391,6 @@ export default {
 	gap: 8rpx;
 	padding: 8rpx 0;
 }
-
-/* 日期格子：上下两行布局 */
 .day-cell {
 	aspect-ratio: 1 / 1;
 	display: flex;
@@ -334,7 +413,7 @@ export default {
 	border-color: #007aff;
 }
 
-/* 日期数字：大、深色、加粗 */
+/* 日期数字 */
 .day-num {
 	font-size: 32rpx;
 	font-weight: 600;
@@ -348,21 +427,36 @@ export default {
 	color: #007aff;
 }
 
-/* 体重数字：小、橙色/主题色、不用粗体，与日期明显区分 */
+/* 体重 + 箭头 */
+.day-weight-row {
+	display: flex;
+	align-items: center;
+	gap: 2rpx;
+	margin-top: 2rpx;
+}
 .day-weight {
-	font-size: 20rpx;
+	font-size: 18rpx;
 	color: #ff9500;
 	font-weight: 400;
 	line-height: 1.1;
-	margin-top: 2rpx;
 	letter-spacing: -0.5rpx;
 }
 .day-cell.selected .day-weight {
-	color: #ffe0b3;   /* 选中时用浅色，跟蓝色背景区分 */
+	color: #ffe0b3;
 }
-.day-cell.today .day-weight {
-	color: #ff9500;
+.day-trend {
+	font-size: 18rpx;
+	font-weight: 700;
+	line-height: 1.1;
 }
+.day-cell.selected .day-trend {
+	color: #ffffff !important;
+}
+
+/* 趋势颜色 */
+.trend-up { color: #ff3b30; }
+.trend-down { color: #34c759; }
+.trend-same { color: #8e8e93; }
 
 /* 记录卡片 */
 .record-card {
@@ -393,11 +487,18 @@ export default {
 	font-size: 32rpx;
 	color: #8e8e93;
 }
+.card-trend {
+	font-size: 40rpx;
+	font-weight: 700;
+	margin-left: 8rpx;
+}
 .weight-empty {
 	font-size: 36rpx;
 	color: #c6c6c8;
 	font-style: italic;
 }
+
+/* 输入区 */
 .input-area {
 	display: flex;
 	align-items: center;
@@ -437,6 +538,20 @@ export default {
 .save-btn.disabled {
 	background-color: #c6c6c8;
 }
+
+/* 锁定提示 */
+.locked-hint {
+	height: 96rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: #f7f7f9;
+	border-radius: 20rpx;
+	font-size: 28rpx;
+	color: #8e8e93;
+}
+
+/* 底部小提示 */
 .hint-text {
 	display: block;
 	font-size: 24rpx;
@@ -445,59 +560,6 @@ export default {
 	text-align: right;
 }
 
-/* 最近记录 */
-.recent-section {
-	margin: 0 24rpx;
-}
-.section-title {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	font-size: 34rpx;
-	font-weight: 600;
-	color: #1a1a1a;
-	margin-bottom: 20rpx;
-}
-.clear-all {
-	font-size: 26rpx;
-	color: #ff3b30;
-	background-color: #fff0ef;
-	padding: 10rpx 22rpx;
-	border-radius: 40rpx;
-	font-weight: 500;
-}
-.record-list {
-	background-color: #ffffff;
-	border-radius: 24rpx;
-	overflow: hidden;
-}
-.record-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 28rpx 32rpx;
-	border-bottom: 2rpx solid #f0f0f0;
-}
-.record-item:last-child {
-	border-bottom: none;
-}
-.record-date {
-	font-size: 30rpx;
-	color: #1a1a1a;
-	font-weight: 500;
-}
-.record-weight {
-	font-size: 32rpx;
-	font-weight: 600;
-	color: #007aff;
-}
-.empty-records {
-	text-align: center;
-	padding: 60rpx 20rpx;
-	color: #8e8e93;
-	font-size: 28rpx;
-	background-color: #fafafa;
-}
 .footer-spacer {
 	height: 40rpx;
 }

@@ -2,7 +2,7 @@
 	<view class="page">
 		<!-- 头部 -->
 		<view class="header">
-			<text class="header-title">体重记录</text>
+			<text class="header-title">瑞哥体重记录</text>
 			<text class="header-sub">{{ totalCount }} 条记录</text>
 		</view>
 

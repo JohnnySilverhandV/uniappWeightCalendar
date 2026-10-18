@@ -1,9 +1,15 @@
 <template>
 	<view class="page">
-		<!-- 头部（连续点击 5 次触发暗门） -->
+		<!-- 头部 -->
 		<view class="header">
-			<text class="header-title" @click="handleSecretTap">体重记录</text>
-			<text class="header-sub">{{ totalCount }} 条记录</text>
+			<view class="header-left">
+				<text class="header-title" @click="handleSecretTap">体重记录</text>
+				<text v-if="isDevMode" class="dev-badge">测试模式</text>
+			</view>
+			<view class="header-right">
+				<text class="io-btn import" @click="importData">导入</text>
+				<text class="io-btn export" @click="exportData">导出</text>
+			</view>
 		</view>
 
 		<!-- 日历 -->
@@ -30,7 +36,6 @@
 					<text class="day-num">{{ cell.day }}</text>
 					<view v-if="cell.hasRecord" class="day-weight-row">
 						<text class="day-weight">{{ cell.weight }}</text>
-						<!-- 小格子里的箭头依然保留（因为格子太小写不下文字） -->
 						<text
 							v-if="cell.trend"
 							class="day-trend"
@@ -45,7 +50,6 @@
 		<view class="record-card">
 			<view class="card-header-row">
 				<text class="selected-date">{{ selectedDateLabel }}</text>
-				<text v-if="isDevMode" class="dev-badge">测试模式</text>
 			</view>
 
 			<view class="weight-display">
@@ -53,7 +57,6 @@
 					<text class="weight-value">{{ currentWeight.toFixed(1) }}</text>
 					<text class="weight-unit">斤</text>
 
-					<!-- 大卡片里改成直白的文字标签 -->
 					<view v-if="trendInfo" class="trend-badge" :class="'trend-' + trendInfo.type">
 						<text>{{ trendInfo.text }}</text>
 					</view>
@@ -61,7 +64,6 @@
 				<text v-else class="weight-empty">暂无记录</text>
 			</view>
 
-			<!-- 提示 -->
 			<view v-if="!isDevMode" class="locked-hint">
 				<text v-if="isToday && currentWeight !== null">今日记录已完成，不可更改</text>
 				<text v-else-if="!isToday && currentWeight !== null">历史记录，不可修改</text>
@@ -76,7 +78,7 @@
 		<!-- 🚪 开发者测试面板 -->
 		<view v-if="isDevMode" class="dev-panel">
 			<view class="dev-actions">
-				<view class="dev-btn" @click="mockData">注入 Mock 数据</view>
+				<view class="dev-btn" @click="mockData">注入数据</view>
 				<view class="dev-btn warning" @click="clearAllData">清空数据</view>
 				<view class="dev-btn" @click="exitDevMode">退出测试</view>
 			</view>
@@ -84,23 +86,44 @@
 
 		<view class="footer-spacer"></view>
 
-		<!-- 💡 自定义输入弹窗 -->
-		<view v-if="showModal" class="custom-modal-mask" @click="closeModal">
-			<view class="custom-modal-box" @click.stop>
-				<view class="modal-title">记录体重</view>
-				<text class="modal-subtitle">{{ selectedDateLabel }}</text>
+		<!-- 🔢 自定义数字键盘弹窗 -->
+		<view v-if="showKeypad" class="keypad-mask" @click="closeKeypad">
+			<view class="keypad-card" @click.stop>
+				<!-- 顶部：日期与取消 -->
+				<view class="keypad-header">
+					<text class="keypad-date">{{ selectedDateLabel }}</text>
+					<text class="keypad-close" @click="closeKeypad">✕</text>
+				</view>
 
-				<input
-					class="modal-input"
-					type="digit"
-					v-model="modalInputValue"
-					placeholder="请输入体重"
-					focus
-				/>
+				<!-- 中间：显示输入的数值 -->
+				<view class="keypad-display">
+					<text class="keypad-value">{{ keypadValue || '0' }}</text>
+					<text class="keypad-unit">斤</text>
+				</view>
+				<text class="keypad-tip">输入数值，支持斤/公斤自动识别</text>
 
-				<view class="modal-actions">
-					<view class="modal-btn cancel" @click="closeModal">取消</view>
-					<view class="modal-btn confirm" @click="submitModal">保存</view>
+				<!-- 底部：数字键盘 -->
+				<view class="keypad-grid">
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('1')">1</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('2')">2</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('3')">3</view>
+
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('4')">4</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('5')">5</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('6')">6</view>
+
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('7')">7</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('8')">8</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('9')">9</view>
+
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('.')">.</view>
+					<view class="key-btn" hover-class="key-btn-hover" @click="pressKey('0')">0</view>
+					<view class="key-btn delete-btn" hover-class="key-btn-hover" @click="deleteKey">⌫</view>
+				</view>
+
+				<!-- 保存按钮 -->
+				<view class="keypad-save-btn" :class="{ disabled: !keypadValue }" @click="submitKeypad">
+					保存记录
 				</view>
 			</view>
 		</view>
@@ -122,8 +145,9 @@ export default {
 			secretTapCount: 0,
 			secretTapTimer: null,
 
-			showModal: false,
-			modalInputValue: ''
+			// 键盘弹窗相关
+			showKeypad: false,
+			keypadValue: ''
 		}
 	},
 	computed: {
@@ -174,7 +198,6 @@ export default {
 			const r = this.records[this.selectedDateStr]
 			return r !== undefined ? r.weight : null
 		},
-		// 计算直白的涨跌文字
 		trendInfo() {
 			if (this.currentWeight === null) return null
 
@@ -188,29 +211,20 @@ export default {
 				}
 			}
 
-			if (lastWeight === null) {
-				return { type: 'same', text: '首次记录' }
-			}
+			if (lastWeight === null) return { type: 'same', text: '首次记录' }
 
 			const diff = Math.round((this.currentWeight - lastWeight) * 10) / 10
 
-			if (diff > 0) {
-				return { type: 'up', text: `增重 ${diff.toFixed(1)} 斤` }
-			} else if (diff < 0) {
-				return { type: 'down', text: `减重 ${Math.abs(diff).toFixed(1)} 斤` }
-			} else {
-				return { type: 'same', text: '体重持平' }
-			}
+			if (diff > 0) return { type: 'up', text: `增重 ${diff.toFixed(1)} 斤` }
+			else if (diff < 0) return { type: 'down', text: `减重 ${Math.abs(diff).toFixed(1)} 斤` }
+			else return { type: 'same', text: '体重持平' }
 		},
 		selectedDateLabel() {
 			if (!this.selectedDateStr) return ''
 			const [y, m, d] = this.selectedDateStr.split('-').map(Number)
 			const date = new Date(y, m - 1, d)
 			const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
-			return `${y}年${m}月${d}日 ${weekdays[date.getDay()]}`
-		},
-		totalCount() {
-			return Object.keys(this.records).length
+			return `${y}年${m}月${d}日`
 		},
 		isToday() {
 			return this.selectedDateStr === this.formatDate(new Date())
@@ -235,7 +249,6 @@ export default {
 
 		handleDayClick(dateStr) {
 			if (!dateStr) return
-
 			this.selectedDateStr = dateStr
 
 			const isToday = dateStr === this.formatDate(new Date())
@@ -247,8 +260,9 @@ export default {
 					return
 				}
 
-				this.modalInputValue = hasRecord ? String(this.records[dateStr].weight) : ''
-				this.showModal = true
+				// 如果已经有记录，初始化带上原值；如果是新增，清空
+				this.keypadValue = hasRecord ? String(this.records[dateStr].weight) : ''
+				this.showKeypad = true
 			} else {
 				if (!hasRecord) {
 					uni.showToast({ title: '暂无记录，仅可查看', icon: 'none' })
@@ -256,30 +270,57 @@ export default {
 			}
 		},
 
-		closeModal() {
-			this.showModal = false
-			this.modalInputValue = ''
+		// ========== 键盘交互 ==========
+		pressKey(key) {
+			if (key === '.') {
+				// 只能有一个小数点
+				if (this.keypadValue.includes('.')) return
+				// 如果为空，直接按小数点，补个0
+				if (this.keypadValue === '') {
+					this.keypadValue = '0.'
+				} else {
+					this.keypadValue += '.'
+				}
+			} else {
+				// 限制最大长度，防止输入过大
+				if (this.keypadValue.length >= 6) return
+				// 处理前导0（比如输入了0，再输入5，变成5而不是05）
+				if (this.keypadValue === '0' && key !== '.') {
+					this.keypadValue = key
+				} else {
+					this.keypadValue += key
+				}
+			}
 		},
 
-		async submitModal() {
-			const val = this.modalInputValue.trim()
-			if (!val) {
-				uni.showToast({ title: '请输入体重', icon: 'none' })
+		deleteKey() {
+			if (this.keypadValue.length > 0) {
+				this.keypadValue = this.keypadValue.slice(0, -1)
+			}
+		},
+
+		closeKeypad() {
+			this.showKeypad = false
+		},
+
+		// ========== 保存与单位识别 ==========
+		async submitKeypad() {
+			const val = this.keypadValue.trim()
+			if (!val || parseFloat(val) <= 0) {
+				uni.showToast({ title: '请输入有效体重', icon: 'none' })
 				return
 			}
 			const inputWeight = parseFloat(val)
-			if (isNaN(inputWeight) || inputWeight <= 0 || inputWeight > 1000) {
-				uni.showToast({ title: '请输入有效数字', icon: 'none' })
-				return
-			}
 
-			this.showModal = false
+			this.showKeypad = false
 
+			// 找上次体重
 			const existingDates = Object.keys(this.records).sort()
 			const lastWeight = existingDates.length > 0
 				? this.records[existingDates[existingDates.length - 1]].weight
 				: null
 
+			// 自动识别单位
 			const unit = this.detectUnit(inputWeight, lastWeight)
 			let finalWeight
 			let convertedMsg = ''
@@ -290,6 +331,7 @@ export default {
 			} else if (unit === 'jin') {
 				finalWeight = Math.round(inputWeight * 10) / 10
 			} else {
+				// 模糊，弹窗确认
 				const confirmed = await this.confirmUnit(inputWeight)
 				if (confirmed === 'cancel') return
 				if (confirmed === 'kg') {
@@ -305,7 +347,7 @@ export default {
 				[this.selectedDateStr]: { weight: finalWeight }
 			}
 			uni.setStorageSync(this.storageKey, JSON.stringify(this.records))
-			this.modalInputValue = ''
+			this.keypadValue = ''
 
 			if (convertedMsg) {
 				uni.showToast({ title: convertedMsg, icon: 'none', duration: 2500 })
@@ -350,21 +392,166 @@ export default {
 			})
 		},
 
-		prevMonth() {
-			this.currentMonth--
-			if (this.currentMonth < 0) {
-				this.currentMonth = 11
-				this.currentYear--
+		// ========== 导入导出功能 ==========
+		exportData() {
+			const dates = Object.keys(this.records).sort()
+			if (dates.length === 0) {
+				uni.showToast({ title: '暂无数据可导出', icon: 'none' })
+				return
 			}
+
+			let csvContent = '日期,体重(斤),较上次变化\n'
+			let prevWeight = null
+
+			dates.forEach(date => {
+				const weight = this.records[date].weight
+				let diffText = '首次记录'
+
+				if (prevWeight !== null) {
+					const diff = Math.round((weight - prevWeight) * 10) / 10
+					if (diff > 0) diffText = `增重 ${diff.toFixed(1)}`
+					else if (diff < 0) diffText = `减重 ${Math.abs(diff).toFixed(1)}`
+					else diffText = '持平'
+				}
+
+				csvContent += `${date},${weight.toFixed(1)},${diffText}\n`
+				prevWeight = weight
+			})
+
+			// #ifdef APP-PLUS
+			uni.showLoading({ title: '生成文件中...' })
+			plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+				const fileName = `体重记录_${new Date().getTime()}.csv`
+				entry.getFile(fileName, { create: true }, (fileEntry) => {
+					fileEntry.createWriter((writer) => {
+						writer.onwrite = () => {
+							uni.hideLoading()
+							const filePath = `file://${fileEntry.fullPath}`
+							uni.shareWithSystem({
+								type: 'file',
+								filePath: filePath,
+								success: () => uni.showToast({ title: '已导出', icon: 'success' }),
+								fail: () => {
+									uni.openDocument({
+										filePath: filePath,
+										showMenu: true,
+										fail: () => uni.showToast({ title: '已保存，无法打开', icon: 'none' })
+									})
+								}
+							})
+						}
+						writer.onerror = () => {
+							uni.hideLoading()
+							uni.showToast({ title: '写入失败', icon: 'none' })
+						}
+						writer.write('\uFEFF' + csvContent)
+					})
+				}, () => uni.hideLoading())
+			}, () => uni.hideLoading())
+			// #endif
+
+			// #ifdef H5
+			const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+			const link = document.createElement('a')
+			link.href = URL.createObjectURL(blob)
+			link.download = `weight_${new Date().getTime()}.csv`
+			link.click()
+			// #endif
 		},
-		nextMonth() {
-			this.currentMonth++
-			if (this.currentMonth > 11) {
-				this.currentMonth = 0
-				this.currentYear++
+
+		importData() {
+			// #ifdef APP-PLUS
+			plus.io.chooseFile({
+				type: 'file',
+				success: (res) => {
+					const filePath = res.files[0]
+					uni.showLoading({ title: '读取中...' })
+					plus.io.resolveLocalFileSystemURL(filePath, (entry) => {
+						entry.file((file) => {
+							const reader = new plus.io.FileReader()
+							reader.onloadend = (evt) => {
+								uni.hideLoading()
+								this.parseCSV(evt.target.result)
+							}
+							reader.onerror = () => {
+								uni.hideLoading()
+								uni.showToast({ title: '读取失败', icon: 'none' })
+							}
+							reader.readAsText(file, 'utf-8')
+						})
+					}, () => uni.hideLoading())
+				},
+				fail: () => uni.showToast({ title: '已取消', icon: 'none' })
+			})
+			// #endif
+
+			// #ifdef H5
+			const input = document.createElement('input')
+			input.type = 'file'
+			input.accept = '.csv'
+			input.onchange = (e) => {
+				const file = e.target.files[0]
+				if (!file) return
+				const reader = new FileReader()
+				reader.onload = (evt) => {
+					this.parseCSV(evt.target.result)
+				}
+				reader.readAsText(file, 'utf-8')
+			}
+			input.click()
+			// #endif
+		},
+
+		parseCSV(text) {
+			const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim() !== '')
+			if (lines.length < 2) {
+				uni.showToast({ title: '格式错误', icon: 'none' })
+				return
+			}
+
+			const importedRecords = {}
+			let successCount = 0
+
+			for (let i = 1; i < lines.length; i++) {
+				const cols = lines[i].split(',')
+				if (cols.length >= 2) {
+					const dateStr = cols[0].trim().replace(/^"|"$/g, '')
+					const weightStr = cols[1].trim().replace(/^"|"$/g, '')
+					const weight = parseFloat(weightStr)
+
+					if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) && !isNaN(weight) && weight > 0) {
+						importedRecords[dateStr] = { weight: weight }
+						successCount++
+					}
+				}
+			}
+
+			if (successCount > 0) {
+				uni.showModal({
+					title: '导入确认',
+					content: `成功解析 ${successCount} 条数据。将覆盖现有记录，确定吗？`,
+					success: (res) => {
+						if (res.confirm) {
+							this.records = importedRecords
+							uni.setStorageSync(this.storageKey, JSON.stringify(this.records))
+							uni.showToast({ title: '导入成功', icon: 'success' })
+						}
+					}
+				})
+			} else {
+				uni.showToast({ title: '无有效数据', icon: 'none' })
 			}
 		},
 
+		// 测试暗门
+		prevMonth() {
+			this.currentMonth--
+			if (this.currentMonth < 0) { this.currentMonth = 11; this.currentYear-- }
+		},
+		nextMonth() {
+			this.currentMonth++
+			if (this.currentMonth > 11) { this.currentMonth = 0; this.currentYear++ }
+		},
 		handleSecretTap() {
 			if (this.isDevMode) return
 			this.secretTapCount++
@@ -374,22 +561,18 @@ export default {
 				this.secretTapCount = 0
 				this.isDevMode = true
 				uni.vibrateShort()
-				uni.showToast({ title: '已进入测试模式', icon: 'none' })
+				uni.showToast({ title: '测试模式', icon: 'none' })
 			}
 		},
-		exitDevMode() {
-			this.isDevMode = false
-			uni.showToast({ title: '已退出测试模式', icon: 'none' })
-		},
+		exitDevMode() { this.isDevMode = false },
 		clearAllData() {
 			uni.showModal({
-				title: '清空数据',
-				content: '确定要清空所有本地体重记录吗？',
+				title: '清空',
+				content: '确定要清空吗？',
 				success: (res) => {
 					if (res.confirm) {
 						this.records = {}
 						uni.setStorageSync(this.storageKey, JSON.stringify({}))
-						uni.showToast({ title: '已清空', icon: 'none' })
 					}
 				}
 			})
@@ -406,23 +589,28 @@ export default {
 			}
 			this.records = mockRecords
 			uni.setStorageSync(this.storageKey, JSON.stringify(this.records))
-			uni.showToast({ title: '注入成功', icon: 'success' })
 		}
 	}
 }
 </script>
 
 <style scoped>
+/* 基础样式 */
 .page { min-height: 100vh; background-color: #f5f7fa; padding-bottom: 20rpx; }
 .header { display: flex; justify-content: space-between; align-items: center; padding: 24rpx 32rpx; background-color: #ffffff; }
+.header-left { display: flex; align-items: center; gap: 12rpx; }
 .header-title { font-size: 44rpx; font-weight: 600; color: #1a1a1a; }
-.header-sub { font-size: 26rpx; color: #007aff; font-weight: 500; background-color: #eef6ff; padding: 8rpx 24rpx; border-radius: 40rpx; }
+.header-right { display: flex; align-items: center; gap: 16rpx; }
+.io-btn { font-size: 26rpx; padding: 8rpx 20rpx; border-radius: 40rpx; font-weight: 500; }
+.io-btn.import { color: #34c759; background-color: #ebfaef; }
+.io-btn.export { color: #007aff; background-color: #eef6ff; }
+
+/* 日历 */
 .calendar-section { background-color: #ffffff; padding: 0 24rpx 24rpx 24rpx; margin-bottom: 24rpx; }
 .month-nav { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 0; }
 .month-year { font-size: 36rpx; font-weight: 600; color: #1a1a1a; }
 .nav-buttons { display: flex; gap: 16rpx; }
 .nav-btn { width: 72rpx; height: 72rpx; border-radius: 50%; background-color: #f2f2f7; display: flex; align-items: center; justify-content: center; font-size: 36rpx; color: #007aff; font-weight: 500; }
-.nav-btn:active { background-color: #e5e5ea; }
 .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 26rpx; color: #8e8e93; padding: 12rpx 0; }
 .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8rpx; padding: 8rpx 0; }
 .day-cell { aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 16rpx; position: relative; border: 2rpx solid transparent; padding: 4rpx 0; box-sizing: border-box; }
@@ -433,9 +621,9 @@ export default {
 .day-cell.selected .day-num { color: #ffffff; }
 .day-cell.today .day-num { color: #007aff; }
 .day-weight-row { display: flex; align-items: center; gap: 2rpx; margin-top: 2rpx; }
-.day-weight { font-size: 18rpx; color: #ff9500; font-weight: 400; line-height: 1.1; letter-spacing: -0.5rpx; }
+.day-weight { font-size: 18rpx; color: #ff9500; font-weight: 400; line-height: 1.1; }
 .day-cell.selected .day-weight { color: #ffe0b3; }
-.day-trend { font-size: 18rpx; font-weight: 700; line-height: 1.1; }
+.day-trend { font-size: 18rpx; font-weight: 700; }
 .day-cell.selected .day-trend { color: #ffffff !important; }
 .trend-up { color: #ff3b30; }
 .trend-down { color: #34c759; }
@@ -450,31 +638,39 @@ export default {
 .weight-value { font-size: 88rpx; font-weight: 700; color: #1a1a1a; line-height: 1; }
 .weight-unit { font-size: 32rpx; color: #8e8e93; }
 .weight-empty { font-size: 36rpx; color: #c6c6c8; font-style: italic; }
-
-/* 文字徽标 */
 .trend-badge { display: flex; align-items: center; margin-left: 16rpx; padding: 6rpx 16rpx; border-radius: 12rpx; font-weight: 600; font-size: 26rpx; line-height: 1; }
 .trend-badge.trend-up { color: #ff3b30; background-color: #ffeceb; }
 .trend-badge.trend-down { color: #34c759; background-color: #ebfaef; }
 .trend-badge.trend-same { color: #8e8e93; background-color: #f2f2f7; }
-
 .locked-hint { height: 80rpx; display: flex; align-items: center; justify-content: center; background-color: #f7f7f9; border-radius: 20rpx; font-size: 28rpx; color: #8e8e93; }
 .footer-spacer { height: 40rpx; }
 
-/* 🚪 开发者面板 */
+/* 测试面板 */
 .dev-panel { margin: 0 24rpx 24rpx; background-color: #1c1c1e; border-radius: 20rpx; padding: 20rpx; }
 .dev-actions { display: flex; gap: 12rpx; }
 .dev-btn { flex: 1; background-color: #2c2c2e; color: #007aff; padding: 20rpx 0; border-radius: 12rpx; font-size: 26rpx; font-weight: 500; text-align: center; }
-.dev-btn:active { background-color: #3a3a3c; }
 .dev-btn.warning { color: #ff3b30; }
 
-/* 💡 自定义弹窗 */
-.custom-modal-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-.custom-modal-box { width: 600rpx; background-color: #ffffff; border-radius: 24rpx; padding: 40rpx; display: flex; flex-direction: column; }
-.modal-title { font-size: 36rpx; font-weight: 600; color: #1a1a1a; text-align: center; }
-.modal-subtitle { font-size: 26rpx; color: #8e8e93; text-align: center; margin-top: 10rpx; margin-bottom: 30rpx; }
-.modal-input { width: 100%; height: 100rpx; background-color: #f5f7fa; border-radius: 16rpx; text-align: center; font-size: 40rpx; font-weight: 600; color: #1a1a1a; margin-bottom: 40rpx; }
-.modal-actions { display: flex; gap: 24rpx; }
-.modal-btn { flex: 1; height: 88rpx; display: flex; align-items: center; justify-content: center; border-radius: 16rpx; font-size: 32rpx; font-weight: 600; }
-.modal-btn.cancel { background-color: #f2f2f7; color: #8e8e93; }
-.modal-btn.confirm { background-color: #007aff; color: #ffffff; }
+/* 🔢 自定义数字键盘 */
+.keypad-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+.keypad-card { width: 640rpx; background-color: #ffffff; border-radius: 32rpx; padding: 40rpx 32rpx; display: flex; flex-direction: column; animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes scaleUp { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+.keypad-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24rpx; }
+.keypad-date { font-size: 28rpx; color: #1a1a1a; font-weight: 600; }
+.keypad-close { font-size: 32rpx; color: #8e8e93; padding: 8rpx; }
+
+.keypad-display { height: 120rpx; background-color: #f5f7fa; border-radius: 20rpx; display: flex; justify-content: center; align-items: baseline; padding: 0 32rpx; margin-bottom: 12rpx; }
+.keypad-value { font-size: 72rpx; font-weight: 700; color: #1a1a1a; line-height: 1; }
+.keypad-unit { font-size: 32rpx; color: #8e8e93; margin-left: 8rpx; }
+.keypad-tip { font-size: 22rpx; color: #ff9500; text-align: center; margin-bottom: 32rpx; }
+
+.keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16rpx; margin-bottom: 32rpx; }
+.key-btn { height: 100rpx; background-color: #f5f7fa; border-radius: 16rpx; display: flex; justify-content: center; align-items: center; font-size: 40rpx; font-weight: 600; color: #1a1a1a; }
+.key-btn-hover { background-color: #e5e5ea; }
+.delete-btn { font-size: 32rpx; color: #ff3b30; }
+
+.keypad-save-btn { height: 96rpx; background-color: #007aff; color: #ffffff; border-radius: 20rpx; display: flex; justify-content: center; align-items: center; font-size: 34rpx; font-weight: 600; }
+.keypad-save-btn.disabled { background-color: #c6c6c8; }
+.keypad-save-btn:active { background-color: #0056cc; }
 </style>

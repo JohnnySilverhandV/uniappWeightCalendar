@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#eef2f8">
+<title>体重日历</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(160deg, #eef2f8 0%, #e8edf5 50%, #f2ecf5 100%);
+  color: #1a1a1a;
+  overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ===== 背景光斑（让毛玻璃有东西可虚化） ===== */
+.bg-blobs { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+.blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; }
+.blob.b1 { width: 46vmax; height: 46vmax; background: #bcd4ff; top: -14vmax; right: -12vmax; animation: drift1 16s ease-in-out infinite alternate; }
+.blob.b2 { width: 38vmax; height: 38vmax; background: #ffd9e8; bottom: -10vmax; left: -10vmax; animation: drift2 20s ease-in-out infinite alternate; }
+.blob.b3 { width: 26vmax; height: 26vmax; background: #c8f4e0; top: 38%; left: 30%; animation: drift1 24s ease-in-out infinite alternate-reverse; }
+@keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(-4vmax, 3vmax) scale(1.08); } }
+@keyframes drift2 { from { transform: translate(0,0) scale(1); } to { transform: translate(3vmax, -4vmax) scale(1.1); } }
+
+/* ===== 毛玻璃通用 ===== */
+.glass {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.08);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass { background: rgba(255, 255, 255, 0.92); }
+}
+
+/* ===== 头部 ===== */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: calc(14px + env(safe-area-inset-top)) 18px 14px;
+  border-radius: 0 0 22px 22px;
+}
+.header-title { font-size: 21px; font-weight: 700; letter-spacing: .5px; cursor: pointer; }
+.dev-badge { font-size: 11px; color: #ff3b30; background: rgba(255,59,48,.12); padding: 2px 8px; border-radius: 6px; font-weight: 600; margin-left: 6px; vertical-align: 2px; }
+.header-right { display: flex; gap: 10px; }
+.io-btn { font-size: 13px; padding: 7px 16px; border-radius: 999px; font-weight: 600; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+.io-btn:active { transform: scale(.92); }
+.io-btn.import { color: #1fad53; background: rgba(52,199,89,.16); }
+.io-btn.export { color: #0071e3; background: rgba(0,122,255,.13); }
+
+main { padding: 16px 14px 30px; max-width: 560px; margin: 0 auto; }
+
+/* ===== 日历卡片 ===== */
+.calendar-card { border-radius: 26px; padding: 18px 16px 20px; margin-bottom: 16px; animation: cardIn .5s cubic-bezier(.16,1,.3,1) both; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.month-nav { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 14px; }
+.month-year { font-size: 19px; font-weight: 700; }
+.nav-buttons { display: flex; gap: 10px; }
+.nav-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: #0071e3; font-weight: 600; cursor: pointer;
+  transition: transform .18s cubic-bezier(.34,1.56,.64,1), background .18s;
+}
+.nav-btn:active { transform: scale(.85); background: rgba(0,122,255,.12); }
+.weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 13px; color: #8e8e93; padding-bottom: 8px; }
+.days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; transition: opacity .18s ease, transform .18s ease; }
+.days-grid.anim-left  { opacity: 0; transform: translateX(-14px); }
+.days-grid.anim-right { opacity: 0; transform: translateX(14px); }
+
+.day-cell {
+  aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 14px; position: relative; border: 2px solid transparent; padding: 2px 0;
+  cursor: pointer; transition: transform .18s cubic-bezier(.34,1.56,.64,1), background .2s, box-shadow .2s;
+}
+.day-cell:not(.empty):active { transform: scale(.88); }
+.day-cell.empty { pointer-events: none; }
+.day-cell.selected {
+  background: linear-gradient(135deg, #0a84ff, #4da3ff);
+  box-shadow: 0 6px 16px rgba(10,132,255,.35);
+  animation: popSel .3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popSel { 0% { transform: scale(.85); } 100% { transform: scale(1); } }
+.day-cell.today:not(.selected) { border-color: #0a84ff; }
+.day-num { font-size: 16px; font-weight: 600; line-height: 1.1; position: relative; z-index: 2; }
+.day-cell.selected .day-num { color: #fff; }
+.day-cell.today .day-num { color: #0a84ff; }
+.day-weight-row { display: flex; align-items: center; gap: 1px; margin-top: 1px; position: relative; z-index: 2; }
+.day-weight { font-size: 9.5px; color: #e8890c; font-weight: 500; line-height: 1.1; }
+.day-cell.selected .day-weight { color: #ffe0b3; }
+.day-trend { font-size: 10px; font-weight: 700; line-height: 1.1; }
+.trend-up { color: #ff3b30; }
+.trend-down { color: #34c759; }
+.trend-same { color: #8e8e93; }
+.day-cell.selected .day-trend { color: #fff !important; }
+.day-cell.just-saved { animation: popSel .35s cubic-bezier(.34,1.56,.64,1); }
+
+/* 记录过的日期：小对勾角标 */.cell-check {
+  position: absolute; top: 4px; right: 4px; width: 14px; height: 14px; z-index: 3;
+  animation: checkPop .4s cubic-bezier(.34,1.8,.64,1) both;
+}
+@keyframes checkPop { from { transform: scale(0); } to { transform: scale(1); } }
+
+/* ===== 记录卡片 ===== */
+.record-card { border-radius: 26px; padding: 24px 22px; margin-bottom: 16px; animation: cardIn .55s .06s cubic-bezier(.16,1,.3,1) both; }
+.selected-date { font-size: 14px; color: #8e8e93; font-weight: 500; }
+.weight-display { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 22px; min-height: 60px; }
+.weight-value { font-size: 52px; font-weight: 800; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.weight-unit { font-size: 18px; color: #8e8e93; }
+.weight-empty { font-size: 20px; color: #c6c6c8; font-style: italic; }
+.trend-badge { padding: 5px 12px; border-radius: 10px; font-weight: 700; font-size: 14px; line-height: 1; animation: checkPop .35s cubic-bezier(.34,1.56,.64,1); }
+.trend-badge.trend-up { color: #ff3b30; background: rgba(255,59,48,.1); }
+.trend-badge.trend-down { color: #34c759; background: rgba(52,199,89,.12); }
+.trend-badge.trend-same { color: #8e8e93; background: rgba(142,142,147,.12); }
+.locked-hint { min-height: 46px; display: flex; align-items: center; justify-content: center; background: rgba(142,142,147,.09); border-radius: 16px; font-size: 14px; color: #8e8e93; }
+.footer-spacer { height: 20px; }
+
+/* 底部提示 */
+.foot-tip { text-align: center; padding: 4px 24px calc(28px + env(safe-area-inset-bottom)); }
+.foot-tip p { font-size: 11px; color: rgba(142,142,147,.8); line-height: 1.9; }
+.foot-tip .foot-tip-title { font-size: 11.5px; font-weight: 600; color: rgba(110,110,115,.92); letter-spacing: .5px; }
+
+/* ===== 测试面板 ===== */
+.dev-panel { border-radius: 20px; padding: 14px; background: rgba(28,28,30,.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); margin-bottom: 16px; animation: cardIn .4s both; }
+.dev-actions { display: flex; gap: 10px; }
+.dev-btn { flex: 1; background: rgba(255,255,255,.1); color: #0a84ff; padding: 12px 0; border-radius: 12px; font-size: 14px; font-weight: 600; text-align: center; cursor: pointer; }
+.dev-btn.warning { color: #ff453a; }
+.dev-btn:active { opacity: .7; }
+
+/* ===== 数字键盘 ===== */
+.keypad-mask {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(20, 24, 40, 0.32);
+  backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  display: flex; justify-content: center; align-items: center;
+  animation: fadeIn .2s ease both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.keypad-mask.closing { animation: fadeOut .18s ease both; }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+.keypad-card {
+  width: min(88vw, 360px);
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  border: 1px solid rgba(255,255,255,.75);
+  box-shadow: 0 20px 60px rgba(31,38,135,.18);
+  border-radius: 28px; padding: 22px 20px; display: flex; flex-direction: column;
+  animation: springUp .32s cubic-bezier(.16,1.2,.3,1) both;
+}
+.keypad-mask.closing .keypad-card { animation: springDown .18s ease both; }
+@keyframes springUp { from { opacity: 0; transform: translateY(40px) scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes springDown { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(30px) scale(.94); } }
+.keypad-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.keypad-date { font-size: 15px; font-weight: 700; }
+.keypad-close { font-size: 17px; color: #8e8e93; padding: 6px 10px; cursor: pointer; }
+.keypad-display {
+  height: 66px; background: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.8);
+  border-radius: 18px; display: flex; justify-content: center; align-items: baseline; padding: 0 18px; margin-bottom: 8px;
+}
+.keypad-value { font-size: 40px; font-weight: 800; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.keypad-unit { font-size: 18px; color: #8e8e93; margin-left: 6px; }
+.keypad-tip { font-size: 12px; color: #e8890c; text-align: center; margin-bottom: 18px; }
+.keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.key-btn {
+  height: 52px; background: rgba(255,255,255,.62); border: 1px solid rgba(255,255,255,.85);
+  border-radius: 15px; display: flex; justify-content: center; align-items: center;
+  font-size: 22px; font-weight: 700; cursor: pointer;
+  transition: transform .12s ease, background .12s ease;
+}
+.key-btn:active { transform: scale(.9); background: rgba(0,122,255,.12); }
+.delete-btn { font-size: 18px; color: #ff3b30; }
+.keypad-save-btn {
+  height: 52px; border-radius: 18px; display: flex; justify-content: center; align-items: center;
+  font-size: 17px; font-weight: 700; color: #fff; cursor: pointer;
+  background: linear-gradient(135deg, #0a84ff, #3f9dff);
+  box-shadow: 0 8px 20px rgba(10,132,255,.35);
+  transition: transform .15s cubic-bezier(.34,1.56,.64,1), opacity .2s, box-shadow .2s;
+}
+.keypad-save-btn:not(.disabled):active { transform: scale(.96); }
+.keypad-save-btn.disabled { background: rgba(142,142,147,.4); box-shadow: none; }
+
+/* ===== 保存成功：圆环逐渐变满 + 打勾 ===== */
+.success-mask {
+  position: fixed; inset: 0; z-index: 10000; pointer-events: none;
+  background: rgba(255,255,255,.25);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px;
+  opacity: 0; transition: opacity .25s ease;
+}
+.success-mask.show { opacity: 1; }
+.success-ring { width: 110px; height: 110px; }
+.success-ring .track { fill: none; stroke: rgba(48,209,88,.18); stroke-width: 6; }
+.success-ring .bar {
+  fill: none; stroke: #30d158; stroke-width: 6; stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100; transform: rotate(-90deg); transform-origin: 50% 50%;
+}
+.success-mask.show .success-ring .bar { animation: ringDraw .7s .05s cubic-bezier(.55,0,.25,1) forwards; }
+@keyframes ringDraw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+.success-ring .mark {
+  fill: none; stroke: #30d158; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+}
+.success-mask.show .success-ring .mark { animation: ringDraw .35s .65s cubic-bezier(.55,0,.25,1) forwards; }
+.success-ring .glow { fill: rgba(48,209,88,.14); transform-origin: 50% 50%; transform: scale(0); }
+.success-mask.show .success-ring .glow { animation: glowIn .5s .3s cubic-bezier(.34,1.56,.64,1) forwards; }
+@keyframes glowIn { to { transform: scale(1); } }
+.success-text { font-size: 17px; font-weight: 700; color: #248a3d; opacity: 0; transform: translateY(8px); transition: all .3s .75s ease; }
+.success-mask.show .success-text { opacity: 1; transform: none; }
+
+/* ===== 单位确认弹窗 ===== */
+.confirm-mask { position: fixed; inset: 0; z-index: 10001; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; animation: fadeIn .2s both; }
+.confirm-card {
+  width: min(80vw, 300px); border-radius: 22px; overflow: hidden; text-align: center;
+  background: rgba(255,255,255,.85); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  animation: springUp .28s cubic-bezier(.16,1.2,.3,1) both;
+}
+.confirm-title { font-size: 16px; font-weight: 700; padding: 20px 18px 6px; }
+.confirm-body { font-size: 14px; color: #6d6d72; padding: 0 18px 18px; line-height: 1.5; }
+.confirm-btns { display: flex; border-top: .5px solid rgba(0,0,0,.12); }
+.confirm-btns > div { flex: 1; padding: 14px 0; font-size: 16px; cursor: pointer; transition: background .15s; }
+.confirm-btns > div:active { background: rgba(0,0,0,.06); }
+.confirm-btns .cancel { color: #007aff; border-right: .5px solid rgba(0,0,0,.12); }
+.confirm-btns .ok { color: #007aff; font-weight: 700; }
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed; left: 50%; bottom: 12vh; transform: translateX(-50%);
+  background: rgba(30,30,32,.88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  color: #fff; font-size: 14px; padding: 11px 20px; border-radius: 999px; z-index: 10002;
+  animation: toastIn .25s cubic-bezier(.34,1.56,.64,1) both; white-space: nowrap; max-width: 86vw; overflow: hidden; text-overflow: ellipsis;
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.toast.out { animation: toastOut .25s ease both; }
+@keyframes toastOut { to { opacity: 0; transform: translate(-50%, 10px); } }
+
+/* 数字滚动 */
+.weight-value.tick { animation: numTick .3s cubic-bezier(.34,1.56,.64,1); }
+@keyframes numTick { 0% { transform: scale(1); } 50% { transform: scale(1.12); color: #0a84ff; } 100% { transform: scale(1); } }
+</style>
+</head>
+<body>
+
+<div class="bg-blobs"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+
+<header class="glass header">
+  <div class="header-left">
+    <span class="header-title" id="titleTap">体重记录</span><span class="dev-badge" id="devBadge" style="display:none">测试模式</span>
+  </div>
+  <div class="header-right">
+    <span class="io-btn import" id="btnImport">导入</span>
+    <span class="io-btn export" id="btnExport">导出</span>
+  </div>
+</header>
+
+<main>
+  <!-- 日历 -->
+  <section class="glass calendar-card">
+    <div class="month-nav">
+      <span class="month-year" id="monthYear"></span>
+      <div class="nav-buttons">
+        <div class="nav-btn" id="btnPrev">←</div>
+        <div class="nav-btn" id="btnNext">→</div>
+      </div>
+    </div>
+    <div class="weekdays">
+      <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+    </div>
+    <div class="days-grid" id="daysGrid"></div>
+  </section>
+
+  <!-- 记录详情 -->
+  <section class="glass record-card">
+    <div class="selected-date" id="selectedDate"></div>
+    <div class="weight-display" id="weightDisplay"></div>
+    <div class="locked-hint" id="lockedHint"></div>
+  </section>
+
+  <section class="dev-panel" id="devPanel" style="display:none">
+    <div class="dev-actions">
+      <div class="dev-btn" id="btnMock">注入数据</div>
+      <div class="dev-btn warning" id="btnClear">清空数据</div>
+      <div class="dev-btn" id="btnExitDev">退出测试</div>
+    </div>
+  </section>
+
+  <div class="footer-spacer"></div>
+
+  <div class="foot-tip">
+    <p class="foot-tip-title">纯本地应用 · 不联网 · 无广告 · 无充值套路</p>
+    <p>数据仅存于本机，清除缓存后记录会消失</p>
+    <p>清除数据或卸载前请先「导出」备份，之后可「导入」恢复</p>
+  </div>
+</main>
+
+<!-- 数字键盘 -->
+<div class="keypad-mask" id="keypadMask" style="display:none">
+  <div class="keypad-card" id="keypadCard">
+    <div class="keypad-header">
+      <span class="keypad-date" id="keypadDate"></span>
+      <span class="keypad-close" id="keypadClose">✕</span>
+    </div>
+    <div class="keypad-display">
+      <span class="keypad-value" id="keypadValue">0</span>
+      <span class="keypad-unit">斤</span>
+    </div>
+    <div class="keypad-tip">输入数值，支持斤/公斤自动识别</div>
+    <div class="keypad-grid">
+      <div class="key-btn" data-k="1">1</div><div class="key-btn" data-k="2">2</div><div class="key-btn" data-k="3">3</div>
+      <div class="key-btn" data-k="4">4</div><div class="key-btn" data-k="5">5</div><div class="key-btn" data-k="6">6</div>
+      <div class="key-btn" data-k="7">7</div><div class="key-btn" data-k="8">8</div><div class="key-btn" data-k="9">9</div>
+      <div class="key-btn" data-k=".">.</div><div class="key-btn" data-k="0">0</div><div class="key-btn delete-btn" id="keyDel">⌫</div>
+    </div>
+    <div class="keypad-save-btn disabled" id="keySave">保存记录</div>
+  </div>
+</div>
+
+<!-- 保存成功动画 -->
+<div class="success-mask" id="successMask">
+  <svg class="success-ring" viewBox="0 0 100 100">
+    <circle class="glow" cx="50" cy="50" r="40"/>
+    <circle class="track" cx="50" cy="50" r="42" pathLength="100"/>
+    <circle class="bar" cx="50" cy="50" r="42" pathLength="100"/>
+    <path class="mark" d="M32 51 L45 63 L69 38" pathLength="100"/>
+  </svg>
+  <div class="success-text" id="successText">已记录</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var STORAGE_KEY = 'weight_records_v2'; // 与原版保持一致
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = {
+    records: {},
+    currentYear: new Date().getFullYear(),
+    currentMonth: new Date().getMonth(),
+    selectedDateStr: fmtDate(new Date()),
+    isDevMode: false,
+    secretTapCount: 0, secretTapTimer: null,
+    keypadValue: ''
+  };
+
+  function fmtDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function sortedDates() { return Object.keys(state.records).sort(); }
+  function vibrate(ms) { if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
+
+  /* ---------- Toast ---------- */
+  var toastTimer = null;
+  function toast(msg, ms) {
+    var old = document.querySelector('.toast');
+    if (old) old.remove();
+    clearTimeout(toastTimer);
+    var el = document.createElement('div');
+    el.className = 'toast'; el.textContent = msg;
+    document.body.appendChild(el);
+    toastTimer = setTimeout(function () {
+      el.classList.add('out');
+      setTimeout(function () { el.remove(); }, 260);
+    }, ms || 2000);
+  }
+
+  /* ---------- 日历渲染 ---------- */
+  function renderCalendar(animDir) {
+    $('monthYear').textContent = state.currentYear + '年' + (state.currentMonth + 1) + '月';
+    var grid = $('daysGrid');
+    var build = function () {
+      var html = '';
+      var firstDay = new Date(state.currentYear, state.currentMonth, 1).getDay();
+      var leading = firstDay === 0 ? 6 : firstDay - 1;
+      var daysInMonth = new Date(state.currentYear, state.currentMonth + 1, 0).getDate();
+      var todayStr = fmtDate(new Date());
+      var dates = sortedDates();
+      for (var i = 0; i < leading; i++) html += '<div class="day-cell empty"></div>';
+      for (var d = 1; d <= daysInMonth; d++) {
+        var dateStr = state.currentYear + '-' + pad(state.currentMonth + 1) + '-' + pad(d);
+        var cls = 'day-cell';
+        if (dateStr === state.selectedDateStr) cls += ' selected';
+        else if (dateStr === todayStr) cls += ' today';
+        var rec = state.records[dateStr];
+        var inner = '<span class="day-num">' + d + '</span>';
+        if (rec) {
+          var trend = '';
+          var idx = dates.indexOf(dateStr);
+          if (idx > 0) {
+            var diff = Math.round((rec.weight - state.records[dates[idx - 1]].weight) * 10) / 10;
+            trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'same';
+          }
+          inner += '<div class="day-weight-row"><span class="day-weight">' + rec.weight.toFixed(1) + '</span>' +
+            (trend ? '<span class="day-trend trend-' + trend + '">' + (trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→') + '</span>' : '') +
+            '</div>' +
+            '<svg class="cell-check" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="rgba(48,209,88,.18)"/><path d="M30 52 L45 65 L72 36" fill="none" stroke="#30d158" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
+        html += '<div class="' + cls + '" data-date="' + dateStr + '">' + inner + '</div>';
+      }
+      grid.innerHTML = html;
+    };
+    if (animDir) {
+      grid.classList.add(animDir === 'prev' ? 'anim-left' : 'anim-right');
+      setTimeout(function () {
+        build();
+        grid.classList.remove('anim-left', 'anim-right');
+      }, 180);
+    } else {
+      build();
+    }
+  }
+
+  /* ---------- 详情卡片 ---------- */
+  var lastShownWeight = null;
+  function renderDetail(countUpFrom) {
+    var rec = state.records[state.selectedDateStr];
+    var y = +state.selectedDateStr.slice(0, 4), m = +state.selectedDateStr.slice(5, 7), d = +state.selectedDateStr.slice(8, 10);
+    $('selectedDate').textContent = y + '年' + m + '月' + d + '日';
+
+    var disp = $('weightDisplay');
+    var isToday = state.selectedDateStr === fmtDate(new Date());
+    var hint = $('lockedHint');
+
+    if (rec) {
+      var trendHtml = '';
+      var dates = sortedDates(), lastW = null;
+      for (var i = dates.length - 1; i >= 0; i--) {
+        if (dates[i] < state.selectedDateStr) { lastW = state.records[dates[i]].weight; break; }
+      }
+      if (lastW === null) trendHtml = '<span class="trend-badge trend-same">首次记录</span>';
+      else {
+        var diff = Math.round((rec.weight - lastW) * 10) / 10;
+        if (diff > 0) trendHtml = '<span class="trend-badge trend-up">增重 ' + diff.toFixed(1) + ' 斤</span>';
+        else if (diff < 0) trendHtml = '<span class="trend-badge trend-down">减重 ' + Math.abs(diff).toFixed(1) + ' 斤</span>';
+        else trendHtml = '<span class="trend-badge trend-same">体重持平</span>';
+      }
+      var val = rec.weight;
+      if (countUpFrom !== undefined && countUpFrom !== null) {
+        animateNumber(disp, countUpFrom, val, trendHtml);
+      } else {
+        disp.innerHTML = '<span class="weight-value">' + val.toFixed(1) + '</span><span class="weight-unit">斤</span>' + trendHtml;
+      }
+      hint.textContent = isToday ? '今日记录已完成，不可更改'
+        : '历史记录，不可修改';
+    } else {
+      disp.innerHTML = '<span class="weight-empty">暂无记录</span>';
+      hint.textContent = isToday ? '点击日历上的"今天"即可记录' : '暂无记录，仅可查看';
+    }
+    if (state.isDevMode) hint.textContent = '测试模式：点击任意日期可修改';
+  }
+
+  function animateNumber(container, from, to, trendHtml) {
+    var start = null, dur = 550;
+    from = Math.round(from * 10) / 10;
+    function step(ts) {
+      if (!start) start = ts;
+      var p = Math.min((ts - start) / dur, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      var v = from + (to - from) * eased;
+      container.innerHTML = '<span class="weight-value">' + v.toFixed(1) + '</span><span class="weight-unit">斤</span>' + (p === 1 ? trendHtml : '');
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  /* ---------- 保存成功动画：圆环逐渐画满 + 打勾 ---------- */
+  function showSuccess(dateStr) {
+    var mask = $('successMask');
+    mask.classList.remove('show');
+    void mask.offsetWidth; // 重置动画
+    mask.classList.add('show');
+    vibrate([18, 60, 24]);
+
+    // 对应日期格子弹跳一下
+    var cell = document.querySelector('.day-cell[data-date="' + dateStr + '"]');
+    if (cell) {
+      cell.classList.add('just-saved');
+      setTimeout(function () { cell.classList.remove('just-saved'); }, 800);
+    }
+    setTimeout(function () { mask.classList.remove('show'); }, 1400);
+  }
+
+  /* ---------- 交互：日期点击 ---------- */
+  function handleDayClick(dateStr) {
+    if (!dateStr) return;
+    var changed = state.selectedDateStr !== dateStr;
+    state.selectedDateStr = dateStr;
+    if (changed) {
+      renderCalendar();
+      renderDetail();
+    }
+    var isToday = dateStr === fmtDate(new Date());
+    var hasRecord = state.records[dateStr] !== undefined;
+    if (isToday || state.isDevMode) {
+      if (!state.isDevMode && hasRecord) { toast('今日记录已完成，不可更改'); return; }
+      state.keypadValue = hasRecord ? String(state.records[dateStr].weight) : '';
+      openKeypad();
+    } else if (!hasRecord) {
+      toast('暂无记录，仅可查看');
+    }
+  }
+
+  /* ---------- 键盘 ---------- */
+  function openKeypad() {
+    $('keypadDate').textContent = state.selectedDateStr.replace(/-/g, '/');
+    updateKeypadDisplay();
+    var mask = $('keypadMask');
+    mask.classList.remove('closing');
+    mask.style.display = 'flex';
+  }
+  function closeKeypad() {
+    var mask = $('keypadMask');
+    mask.classList.add('closing');
+    setTimeout(function () { mask.style.display = 'none'; }, 180);
+  }
+  function updateKeypadDisplay() {
+    $('keypadValue').textContent = state.keypadValue || '0';
+    $('keySave').classList.toggle('disabled', !state.keypadValue);
+  }
+  function pressKey(k) {
+    if (k === '.') {
+      if (state.keypadValue.indexOf('.') !== -1) return;
+      state.keypadValue += state.keypadValue === '' ? '0.' : '.';
+    } else {
+      if (state.keypadValue.length >= 6) return;
+      if (state.keypadValue === '0') state.keypadValue = k;
+      else state.keypadValue += k;
+    }
+    updateKeypadDisplay();
+  }
+  function deleteKey() {
+    state.keypadValue = state.keypadValue.slice(0, -1);
+    updateKeypadDisplay();
+  }
+
+  /* ---------- 保存与单位识别（逻辑与原版一致） ---------- */
+  function detectUnit(w, lastWeight) {
+    var MIN = 60, MAX = 500;
+    var asJin = w, asKg = w * 2;
+    var jinValid = asJin >= MIN && asJin <= MAX;
+    var kgValid = asKg >= MIN && asKg <= MAX;
+    if (lastWeight !== null) {
+      var dJ = Math.abs(asJin - lastWeight), dK = Math.abs(asKg - lastWeight);
+      if (Math.abs(dJ - dK) > 10) return dJ < dK ? 'jin' : 'kg';
+      if (jinValid && !kgValid) return 'jin';
+      if (kgValid && !jinValid) return 'kg';
+      return 'unknown';
+    }
+    if (jinValid && !kgValid) return 'jin';
+    if (kgValid && !jinValid) return 'kg';
+    return 'unknown';
+  }
+  function confirmUnit(w) {
+    return new Promise(function (resolve) {
+      var mask = document.createElement('div');
+      mask.className = 'confirm-mask';
+      mask.innerHTML = '<div class="confirm-card"><div class="confirm-title">确认单位</div>' +
+        '<div class="confirm-body">你输入的是 ' + w + '，是斤还是公斤？</div>' +
+        '<div class="confirm-btns"><div class="cancel">斤</div><div class="ok">公斤</div></div></div>';
+      document.body.appendChild(mask);
+      mask.querySelector('.cancel').onclick = function () { mask.remove(); resolve('jin'); };
+      mask.querySelector('.ok').onclick = function () { mask.remove(); resolve('kg'); };
+    });
+  }
+
+  function saveRecord() {
+    var val = state.keypadValue.trim();
+    if (!val || parseFloat(val) <= 0) { toast('请输入有效体重'); return; }
+    var input = parseFloat(val);
+    var dates = sortedDates();
+    var lastWeight = dates.length ? state.records[dates[dates.length - 1]].weight : null;
+    var unit = detectUnit(input, lastWeight);
+    var finalW, msg = '';
+    var doSave = function () {
+      var prev = state.records[state.selectedDateStr] ? state.records[state.selectedDateStr].weight : null;
+      state.records[state.selectedDateStr] = { weight: finalW };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+      closeKeypad();
+      state.keypadValue = '';
+      if (msg) toast(msg, 2500);
+      renderCalendar();
+      renderDetail(prev !== null ? prev : 0);
+      setTimeout(function () { showSuccess(state.selectedDateStr); }, msg ? 60 : 120);
+    };
+    if (unit === 'kg') { finalW = Math.round(input * 2 * 10) / 10; msg = '已按公斤换算：' + input + 'kg = ' + finalW + '斤'; doSave(); }
+    else if (unit === 'jin') { finalW = Math.round(input * 10) / 10; doSave(); }
+    else {
+      confirmUnit(input).then(function (u) {
+        if (u === 'cancel') return;
+        if (u === 'kg') { finalW = Math.round(input * 2 * 10) / 10; msg = '已按公斤换算：' + input + 'kg = ' + finalW + '斤'; }
+        else finalW = Math.round(input * 10) / 10;
+        doSave();
+      });
+    }
+  }
+
+  /* ---------- 导入导出 ---------- */
+  function exportData() {
+    var dates = sortedDates();
+    if (!dates.length) { toast('暂无数据可导出'); return; }
+    var csv = '日期,体重(斤),较上次变化\n';
+    var prev = null;
+    dates.forEach(function (date) {
+      var w = state.records[date].weight;
+      var t = '首次记录';
+      if (prev !== null) {
+        var diff = Math.round((w - prev) * 10) / 10;
+        t = diff > 0 ? '增重 ' + diff.toFixed(1) : diff < 0 ? '减重 ' + Math.abs(diff).toFixed(1) : '持平';
+      }
+      csv += date + ',' + w.toFixed(1) + ',' + t + '\n';
+      prev = w;
+    });
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'weight_' + Date.now() + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('已导出');
+  }
+  function importData() {
+    var input = document.createElement('input');
+    input.type = 'file'; input.accept = '.csv';
+    input.onchange = function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) { parseCSV(ev.target.result); };
+      reader.readAsText(file, 'utf-8');
+    };
+    input.click();
+  }
+  function parseCSV(text) {
+    var lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(function (l) { return l.trim(); });
+    if (lines.length < 2) { toast('格式错误'); return; }
+    var imported = {}, ok = 0;
+    for (var i = 1; i < lines.length; i++) {
+      var cols = lines[i].split(',');
+      if (cols.length >= 2) {
+        var ds = cols[0].trim().replace(/^"|"$/g, '');
+        var w = parseFloat(cols[1].trim().replace(/^"|"$/g, ''));
+        if (/^\d{4}-\d{2}-\d{2}$/.test(ds) && !isNaN(w) && w > 0) { imported[ds] = { weight: w }; ok++; }
+      }
+    }
+    if (ok > 0) {
+      if (confirm('成功解析 ' + ok + ' 条数据。将覆盖现有记录，确定吗？')) {
+        state.records = imported;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+        renderCalendar(); renderDetail();
+        toast('导入成功');
+      }
+    } else toast('无有效数据');
+  }
+
+  /* ---------- 月份切换 ---------- */
+  function prevMonth() {
+    state.currentMonth--;
+    if (state.currentMonth < 0) { state.currentMonth = 11; state.currentYear--; }
+    renderCalendar('prev');
+  }
+  function nextMonth() {
+    state.currentMonth++;
+    if (state.currentMonth > 11) { state.currentMonth = 0; state.currentYear++; }
+    renderCalendar('next');
+  }
+
+  /* ---------- 测试暗门 ---------- */
+  function handleSecretTap() {
+    if (state.isDevMode) return;
+    state.secretTapCount++;
+    clearTimeout(state.secretTapTimer);
+    state.secretTapTimer = setTimeout(function () { state.secretTapCount = 0; }, 2000);
+    if (state.secretTapCount >= 5) {
+      state.secretTapCount = 0;
+      state.isDevMode = true;
+      vibrate(30);
+      $('devBadge').style.display = 'inline';
+      $('devPanel').style.display = 'block';
+      renderDetail();
+      toast('测试模式');
+    }
+  }
+  function exitDevMode() {
+    state.isDevMode = false;
+    $('devBadge').style.display = 'none';
+    $('devPanel').style.display = 'none';
+    renderDetail();
+  }
+  function clearAllData() {
+    if (confirm('确定要清空所有记录吗？')) {
+      state.records = {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({}));
+      renderCalendar(); renderDetail();
+      toast('已清空');
+    }
+  }
+  function mockData() {
+    var mock = {};
+    for (var i = 10; i >= 0; i--) {
+      var d = new Date(); d.setDate(d.getDate() - i);
+      mock[fmtDate(d)] = { weight: Math.round((130 + Math.random() * 5) * 10) / 10 };
+    }
+    state.records = mock;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(mock));
+    renderCalendar(); renderDetail();
+    toast('已注入 11 天演示数据');
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  $('daysGrid').addEventListener('click', function (e) {
+    var cell = e.target.closest('.day-cell');
+    if (cell && cell.dataset.date) handleDayClick(cell.dataset.date);
+  });
+  $('btnPrev').onclick = prevMonth;
+  $('btnNext').onclick = nextMonth;
+  $('titleTap').onclick = handleSecretTap;
+  $('btnExport').onclick = exportData;
+  $('btnImport').onclick = importData;
+  $('btnMock').onclick = mockData;
+  $('btnClear').onclick = clearAllData;
+  $('btnExitDev').onclick = exitDevMode;
+  $('keypadMask').addEventListener('click', function (e) { if (e.target === this) closeKeypad(); });
+  $('keypadClose').onclick = closeKeypad;
+  document.querySelectorAll('.key-btn[data-k]').forEach(function (b) {
+    b.addEventListener('click', function () { pressKey(b.dataset.k); });
+  });
+  $('keyDel').onclick = deleteKey;
+  $('keySave').onclick = saveRecord;
+  document.addEventListener('keydown', function (e) {
+    if ($('keypadMask').style.display !== 'none' && $('keypadMask').style.display !== '') {
+      if (/^[0-9.]$/.test(e.key)) pressKey(e.key);
+      else if (e.key === 'Backspace') { e.preventDefault(); deleteKey(); }
+      else if (e.key === 'Enter') saveRecord();
+      else if (e.key === 'Escape') closeKeypad();
+    }
+  });
+
+  /* ---------- 初始化 ---------- */
+  try {
+    var stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) state.records = JSON.parse(stored);
+  } catch (e) { console.error('读取存储失败', e); }
+  renderCalendar();
+  renderDetail();
+})();
+</script>
+</body>
+</html>

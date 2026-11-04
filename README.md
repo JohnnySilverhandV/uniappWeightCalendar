@@ -6,6 +6,9 @@
 
 基于 uni-app（Vue 3）开发，可打包成 Android APK；另附一份**零依赖单文件网页版**，手机浏览器直接打开就能用。
 
+> **双平台镜像**：GitHub · Gitee（[gitee.com/johnny-silver-hand123/uniapp-weight-calendar](https://gitee.com/johnny-silver-hand123/uniapp-weight-calendar)）
+> 国内访问建议优先用 Gitee，下载更快。
+
 ---
 
 ## 功能
@@ -39,7 +42,12 @@
 
 ### 方式二：Android 安装包
 
-到 [Releases](https://github.com/JohnnySilverhandV/uniappWeightCalendar/releases) 页面下载最新 APK，直接安装。
+到 Releases 页面下载最新 APK，直接安装。两个平台是同一个文件，任选其一：
+
+| 平台 | 下载地址 | 说明 |
+|---|---|---|
+| **Gitee** | [下载 v1.3.0](https://gitee.com/johnny-silver-hand123/uniapp-weight-calendar/releases/download/v1.3.0/WeightCalendar-v1.3.0.apk) | 国内直连，推荐 |
+| GitHub | [下载 v1.3.0](https://github.com/JohnnySilverhandV/uniappWeightCalendar/releases/download/v1.3.0/WeightCalendar-v1.3.0.apk) | 可能需要代理 |
 
 > 安装时系统可能提示「未知来源应用」，需在设置中允许本次安装。这是所有非应用商店分发的 APK 的通用行为。
 
@@ -63,7 +71,11 @@
 需要 [HBuilderX](https://www.dcloud.io/hbuilderx.html)（uni-app 官方 IDE）。
 
 ```bash
+# GitHub
 git clone https://github.com/JohnnySilverhandV/uniappWeightCalendar.git
+
+# 或 Gitee 镜像（国内更快）
+git clone https://gitee.com/johnny-silver-hand123/uniapp-weight-calendar.git
 ```
 
 1. HBuilderX → 文件 → 导入 → 从本地目录导入，选中项目根目录

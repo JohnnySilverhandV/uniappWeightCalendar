@@ -6,8 +6,16 @@
 
 基于 uni-app（Vue 3）开发，可打包成 Android APK；另附一份**零依赖单文件网页版**，手机浏览器直接打开就能用。
 
-> **双平台镜像**：GitHub · Gitee（[gitee.com/johnny-silver-hand123/uniapp-weight-calendar](https://gitee.com/johnny-silver-hand123/uniapp-weight-calendar)）
-> 国内访问建议优先用 Gitee，下载更快。
+> 📱 **Android 安装包 v1.3.0**：[Gitee 下载（国内直连，推荐）](https://gitee.com/johnny-silver-hand123/uniappWeightCalendar/releases/download/v1.3.0/WeightCalendar-v1.3.0.apk) ｜ [GitHub 下载](https://github.com/JohnnySilverhandV/uniappWeightCalendar/releases/download/v1.3.0/WeightCalendar-v1.3.0.apk)
+>
+> 🌐 **网页版（零安装）**：[offline-app/index.html](offline-app/index.html) — 单文件、零依赖，手机浏览器直接打开
+
+## 源码仓库
+
+| 平台 | 地址 |
+|---|---|
+| GitHub | https://github.com/JohnnySilverhandV/uniappWeightCalendar |
+| Gitee（国内镜像） | https://gitee.com/johnny-silver-hand123/uniappWeightCalendar |
 
 ---
 
@@ -42,12 +50,7 @@
 
 ### 方式二：Android 安装包
 
-到 Releases 页面下载最新 APK，直接安装。两个平台是同一个文件，任选其一：
-
-| 平台 | 下载地址 | 说明 |
-|---|---|---|
-| **Gitee** | [下载 v1.3.0](https://gitee.com/johnny-silver-hand123/uniapp-weight-calendar/releases/download/v1.3.0/WeightCalendar-v1.3.0.apk) | 国内直连，推荐 |
-| GitHub | [下载 v1.3.0](https://github.com/JohnnySilverhandV/uniappWeightCalendar/releases/download/v1.3.0/WeightCalendar-v1.3.0.apk) | 可能需要代理 |
+从页首的下载链接取 APK 直接安装（两个平台是同一个文件，任选其一）。
 
 > 安装时系统可能提示「未知来源应用」，需在设置中允许本次安装。这是所有非应用商店分发的 APK 的通用行为。
 
@@ -75,7 +78,7 @@
 git clone https://github.com/JohnnySilverhandV/uniappWeightCalendar.git
 
 # 或 Gitee 镜像（国内更快）
-git clone https://gitee.com/johnny-silver-hand123/uniapp-weight-calendar.git
+git clone https://gitee.com/johnny-silver-hand123/uniappWeightCalendar.git
 ```
 
 1. HBuilderX → 文件 → 导入 → 从本地目录导入，选中项目根目录
@@ -152,4 +155,4 @@ uni-app 打包成 APK 后，页面模板里的 `<svg>` 标签会在编译阶段�
 
 个人自用工具，顺手开源。功能取向是「够用就行」——不做社交、不做排行榜、不做打卡激励，只把记录这件事做干净。
 
-本仓库未附开源许可证。如需转载或用于商业用途，请先联系作者。
+以 MIT 许可开源，详见 [LICENSE](LICENSE)。
